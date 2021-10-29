@@ -1,0 +1,211 @@
+---
+title: "Random forest"
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+
+## Data introduction
+The data is personal information: such as whether the payment is in arrears, gender, education level, whether you are married, age, monthly consumption level, ATM withdrawal
+
+#1. The principle of random forest
+
+(1) Overall summary
+Random forest algorithm is one of the most commonly used and most powerful supervised learning algorithms, which takes into account the ability to solve regression problems and classification problems. Random forest is an algorithm that integrates multiple decision trees through the idea of ensemble learning. For classification problems, the output category is determined by the mode of individual tree output. In the regression problem, the output of each decision tree is averaged to get the final regression result.
+The larger the number of decision trees, the stronger the robustness of the random forest algorithm and the higher the accuracy.
+
+(2) Generation principle
+
+Sample random: Assuming that the training data set has a total of M object data, N samples are randomly selected from the sample data with replacement (Boostrap) (because there is replacement extraction, some data may be selected multiple times, some data may not Selected), the samples taken each time are not exactly the same, these samples constitute the training data set of the decision tree;
+Feature random: Assuming that each sample data has K features, randomly select k (k<=K) features from all the features, and select the best segmentation attribute as the node to build the CART decision tree. The decision tree is growing during the period [formula] The size of is always the same;
+Repeat the previous steps to build m CART trees, these trees must be fully grown and not pruned, these trees form a forest;
+Voting is based on the prediction results of these trees to determine the final prediction category of the sample. (For regression models, the final result is obtained based on the average of these decision tree models).
+
+#2. Advantages and disadvantages
+
+(1) Advantages
+
+High model accuracy: Random forest can handle both classification problems and regression problems. Even if some data is missing, random forest can maintain high classification accuracy.
+It can handle a large number of high-dimensional features without dimensionality reduction (because the feature subset is randomly selected);
+Able to evaluate the importance of each feature in classification problems: a tree structure can be generated to judge the importance of each feature;
+Insensitive to outliers and missing values;
+Random forest has out-of-bag data (OOB), so there is no need to divide the cross-validation set separately.
+
+(2) Disadvantages
+
+Random forest is not as effective as classification problems in solving regression problems; (because its predictions are not inherently continuous, when solving regression problems, random forests cannot give answers for objects other than the training data)
+The greater the correlation between the trees, the greater the error rate;
+When the training data is noisy, it is prone to overfitting.
+
+#3 Assumption
+It is not always possible to find the best split.
+
+Import dataset
+```{r,echo=FALSE,message=F}
+library(readxl)
+library(tidyverse)
+data <- read_xls("~/desktop/default of credit card clients.xls",skip = 1)
+```
+The "ID" column is not helpful for us to fit the model, so remove it.
+```{r,echo=FALSE}
+data <- data[,-1]
+```
+
+```{r,echo=FALSE}
+set.seed(1922)
+n <- sample(1:nrow(data),0.7*nrow(data), replace = FALSE)
+train <- data[n,]
+test <- data[-n,]
+```
+
+Then, fit the model
+```{r,echo=FALSE}
+library(randomForest)
+rf <- randomForest(data=train, factor(`default payment next month`)~., ntree=500)
+plot(rf)
+```
+The figure above shows the variation trend of the error outside the bag with the trees, we can see that when the tree has 100 trees, the error has stabilized.
+
+```{r,echo=FALSE, collapse=T}
+rf_2 <- randomForest(data=train, factor(`default payment next month`)~., ntree=100, importance=TRUE)
+rf_2
+```
+As shown in the above model results, a total of 100 trees are used, each split is 4; the out-of-bag estimation error rate is 18.56%; the error of classification 0 is 0.06; the error of classification 1 is 0.64.
+
+
+```{r,echo=FALSE}
+plot(rf_2$err.rate)
+```
+#Accuracy of the model:This is usually determined after the model parameters have been learned and corrected and no learning has occurred.
+As shown in the above figure, the errors classified as 0 are mainly concentrated below 0.1, a small part is greater than 0.1, and the maximum is 0.287.
+
+
+#Variable importance display.
+
+###
+```{r,echo=FALSE}
+library(ggplot2)
+geni <- data.frame(Variable=names(rf_2$importance[,4]),MeandescGeni=rf_2$importance[,4])
+geni <- geni %>% arrange(MeandescGeni)
+geni$Variable <- factor(geni$Variable,labels=geni$Variable,levels = geni$Variable)
+ggplot(data=geni,aes(MeandescGeni,Variable))+geom_bar(stat="identity")
+```
+
+#gini index
+$$G(p)=\Sigma_{k=1}^{k} (p_k(1-p_k))=1-\Sigma_{k=1}^{k}p^{2}_{k} $$
+
+The figure above shows the average Geni coefficient of each variable:it means that if there is no such variable, how much the average Gini value will fall. The larger the coefficient, the more important the variable, and the less the variable, the smaller the impact of the model's predictive ability.
+
+```{r,echo=FALSE}
+accu <- data.frame(Variable=names(rf_2$importance[,3]),MeandescAccuracy=rf_2$importance[,3])
+accu <- accu %>% arrange(MeandescAccuracy)
+accu$Variable <- factor(accu$Variable,labels=accu$Variable,levels = accu$Variable)
+ggplot(data=accu,aes(MeandescAccuracy,Variable))+geom_bar(stat="identity")
+```
+
+```{r,echo=FALSE}
+g <- geni$Variable[geni$MeandescGeni>200]
+a <- accu$Variable[accu$MeandescAccuracy>0.01]
+intersect(g,a)
+v=intersect(g,a)
+```
+According to the image information, it is found that there is a cliff-like decline at 200 and 0.01, so choosing here indicates that the variable gap between the upper and lower thresholds is very large. Select the variables with meandescgeni greater than 200 and meanescaccuracy greater than 0.01. There were originally 23 variables in the data. According to the importance of variables given by the random forest model, 12 important variables were obtained and 10 unimportant variables were eliminated after screening. The final variables that should be retained are "PAY_3","PAY_2", "PAY_AMT5", "PAY_AMT3", "PAY_AMT2", "BILL_AMT5" "BILL_AMT4", "PAY_AMT1", "BILL_AMT6", "BILL_AMT3", "BILL_AMT2", "BILL_AMT1, "PAY_0".
+
+## Logistic-regression
+Personal understanding is that a linear regression becomes a binomial classifier after being processed by a step function, and the output result can only be the conditional probability of 0 and 1, which is actually a probability model.
+Sigmoid function: It is a step function, which can jump from 0 to 1 instantaneously under different abscissa scales. It can be found from the graph that when x > 0, the sigmoid function value is infinitely close to 1, and vice versa is close to 0. The function is of the following form:
+$$\sigma(z)=\frac {1}{1+e^{-W^Tx}}$$
+```{r,echo=FALSE}
+f <- function(x) 1/(1+exp(-x))
+curve(f,-10,10)
+```
+
+Logistic regression can be seen as comparing the probabilities of $P(y=1|x;\theta)$ and $P(y=0|x;\theta)$ under the condition that the parameter $\theta$ is relative to the known $x$, and selecting the larger probability as the classification result.
+
+```{r,echo=FALSE}
+train_2 <- train[,colnames(train) %in% c(v,"default payment next month")]
+test_2 <- test[,colnames(test) %in% c(v,"default payment next month")]
+fit <- glm(data=train_2,factor(`default payment next month`)~.,family=binomial(link="logit"))
+summary(fit)
+```
+
+$$logit(p)=\frac{1}{1+e^{-1.136+0.58PAY_0+1.188e-01*PAY_2+7.963e-02*PAY_3--5.294e-06*BILL_AMT1+1.604e-06*BILL_AMT2+8.929e-07*BILL_AMT3+1.338e-06*BILL_AMT4-1.626e-06*BILL_AMT5+2.086e-06*BILL_AMT6-1.189e-05*PAY_AMT1-1.166e-05*PAY_AMT2-3.007e-06*PAY_AMT3-5.508e-06*PAY_AMT5}}$$
+```{r,echo=FALSE}
+library(caret)
+pred2 <- predict(fit,train,type="response")
+pred2 <- ifelse(pred2>0.5,1,0)
+confusionMatrix(factor(pred2),factor(train$`default payment next month`))
+pred <- predict(fit,test,type="response")
+pred <- ifelse(pred>0.5,1,0)
+confusionMatrix(factor(pred),factor(test$`default payment next month`))
+
+```
+The train accuracy is 0.8113, The test accuracy is 0.8121. 
+```{r,echo=FALSE}
+t1 <- Sys.time()
+fit2 <- glm(data=train,factor(`default payment next month`)~.,family=binomial(link="logit"))
+t2 <- Sys.time()
+t3 <- Sys.time()
+fit3 <- glm(data=train_2,factor(`default payment next month`)~.,family=binomial(link="logit"))
+t4 <- Sys.time()
+```
+```{r,echo=FALSE}
+t2-t1
+t4-t3
+```
+Difference in fitting time.
+```{r,echo=FALSE}
+data.frame(Before=0.3301101,After=0.239697)
+```
+Difference in predict time
+```{r,echo=FALSE}
+t1 <- Sys.time()
+pred <- predict(fit2,test)
+t2 <- Sys.time()
+t3 <- Sys.time()
+pred2 <- predict(fit3,test_2)
+t4 <- Sys.time()
+```
+
+```{r,echo=FALSE}
+t2-t1
+t4-t3
+```
+Difference in predict test dataset time
+```{r,echo=FALSE}
+data.frame(Before=0.01758504,After=0.01197195)
+```
+
+```{r,echo=FALSE}
+t1 <- Sys.time()
+pred <- predict(fit2,rbind(test,train))
+t2 <- Sys.time()
+t3 <- Sys.time()
+pred2 <- predict(fit3,rbind(test_2,train_2))
+t4 <- Sys.time()
+```
+
+```{r,echo=FALSE}
+t2-t1
+t4-t3
+```
+Difference in predict all dataset time
+```{r,echo=FALSE}
+data.frame(Before=0.04816794,After=0.08359814)
+```
+
+# 4
+LDA, PCA do feature selection is not easy to be explained, each principal component is the weight of the variable, if you use PCA as a model, it is difficult to explain the meaning of the principal component. There are great requirements for the distribution of the data, and the Gaussian distribution is the best. The number of dimensions after dimensionality reduction is at most the number of categories -1.
+
+Relatively speaking, random forest has the following advantages:
+1. Very high accuracy
+2. Able to efficiently run on large data sets
+3. Introduced randomness, not easy to overfit
+4. Random forest has good anti-noise ability, but it will overfit when the data is noisy.
+5. Can handle very high dimensional data without dimensionality reduction
+6. Not only can handle discrete data, but also continuous data, and there is no need to normalize the data set
+7. The training speed is fast, and the importance of variables can be ranked
+8. Easy to achieve parallelization
+9. Good results can be obtained even for the default value problem
+10. There are not many hyperparameters, and they can intuitively understand the meaning of their multi-representation
